@@ -1,2 +1,2 @@
-volcengine-python-sdk[ark]
+volcengine
 openai>=1.0
