@@ -28,114 +28,116 @@ class PromptGenerator:
         """生成用于仿写的prompt"""
         prompts = []
         for i, template in enumerate(analyzed_templates):
-            # 先验证模板结构
-            if not self._validate_template_structure(template):
-                print(f"警告: 模板 {i} 结构不完整，跳过处理")
-                continue
+            try:
+                # 先验证模板结构
+                if not self._validate_template_structure(template):
+                    print(f"警告: 模板 {i} 结构不完整，使用基础prompt")
+                    base_prompt = self._create_fallback_prompt(context, topic)
+                else:
+                    base_prompt = self._create_base_paraphrase_prompt(template, context, topic)
 
-            base_prompt = self._create_base_paraphrase_prompt(template, context, topic)
+                # 高权重模板增强
+                if i == high_weight_index:
+                    enhanced_prompt = self._enhance_prompt_for_high_weight(base_prompt, template)
+                    prompts.append(enhanced_prompt)
+                else:
+                    prompts.append(base_prompt)
 
-            # 高权重模板增强
-            if i == high_weight_index:
-                enhanced_prompt = self._enhance_prompt_for_high_weight(base_prompt, template)
-                prompts.append(enhanced_prompt)
-            else:
-                prompts.append(base_prompt)
+            except Exception as e:
+                print(f"创建基础prompt时出错: {e}")
+                # 使用备用prompt
+                fallback_prompt = self._create_fallback_prompt(context, topic)
+                prompts.append(fallback_prompt)
 
         return prompts
 
     def _validate_template_structure(self, template: Dict) -> bool:
-        """验证模板是否包含必要的结构字段"""
-        required_fields = ['discourse_structure', 'content_structure']
+        """验证模板结构的完整性"""
+        if not isinstance(template, dict):
+            return False
 
-        for field in required_fields:
-            if field not in template:
-                print(f"缺少必要字段: {field}")
-                print(f"当前模板包含的字段: {list(template.keys())}")
-                return False
-
-        # 验证子字段
-        discourse_fields = ['sentence_count', 'sentence_types', 'connectives', 'rhetoric']
-        content_fields = ['core_concepts', 'argument_direction', 'logical_flow']
-
-        discourse = template.get('discourse_structure', {})
-        for field in discourse_fields:
-            if field not in discourse:
-                print(f"discourse_structure 中缺少字段: {field}")
-                return False
-
-        content = template.get('content_structure', {})
-        for field in content_fields:
-            if field not in content:
-                print(f"content_structure 中缺少字段: {field}")
-                return False
-
-        return True
+        required_keys = ['discourse_structure', 'content_structure']
+        return all(key in template for key in required_keys)
 
     def _create_base_paraphrase_prompt(self, template: Dict, context: str, topic: str) -> str:
         """创建基础仿写prompt"""
         try:
-            discourse = template['discourse_structure']
-            content = template['content_structure']
+            discourse = template.get('discourse_structure', {})
+            content = template.get('content_structure', {})
 
-            # 安全获取字段值
-            sentence_count = discourse.get('sentence_count', 'multiple')
-            connectives = discourse.get('connectives', {})
-            rhetoric = discourse.get('rhetoric', {})
-            sentence_types = discourse.get('sentence_types', {})
+            # 安全地获取数值，确保类型转换
+            sentence_count = discourse.get('sentence_count', 3)
+            if isinstance(sentence_count, str):
+                try:
+                    sentence_count = int(sentence_count)
+                except ValueError:
+                    sentence_count = 3
 
+            # 获取句子类型信息
+            sentence_types = discourse.get('sentence_types', [])
+            if isinstance(sentence_types, dict):
+                sentence_types = list(sentence_types.keys())
+            elif not isinstance(sentence_types, list):
+                sentence_types = ['declarative', 'complex']
+
+            # 获取连接词信息
+            connectives = discourse.get('connectives', [])
+            if isinstance(connectives, dict):
+                connectives = list(connectives.keys())
+            elif not isinstance(connectives, list):
+                connectives = ['however', 'therefore', 'furthermore']
+
+            # 获取核心概念
             core_concepts = content.get('core_concepts', [])
-            argument_direction = content.get('argument_direction', {})
-            logical_flow = content.get('logical_flow', 'sequential')
-
-            # 构建连接词描述
-            connectives_desc = ', '.join(
-                [f'{k} ({v} times)' for k, v in connectives.items() if v > 0]) or 'none specified'
-
-            # 构建修辞手法描述
-            rhetoric_desc = ', '.join([f'{k} ({v} times)' for k, v in rhetoric.items() if v > 0]) or 'none specified'
-
-            # 构建句型描述
-            sentence_types_desc = ', '.join([f'{k}: {v}' for k, v in sentence_types.items()]) or 'mixed types'
+            if isinstance(core_concepts, str):
+                core_concepts = [core_concepts]
+            elif not isinstance(core_concepts, list):
+                core_concepts = ['innovation', 'strategy']
 
             # 获取论证方向
-            arg_direction = argument_direction.get('direction', 'balanced') if isinstance(argument_direction,
-                                                                                          dict) else str(
-                argument_direction)
+            argument_direction = content.get('argument_direction', 'balanced')
+            if not isinstance(argument_direction, str):
+                argument_direction = 'balanced'
 
-            # 构建结构描述
-            structure_desc = f"""
-Generate a paragraph following this structure:
-1. Discourse Structure: 
-   - {sentence_count} sentences
-   - Connectives: {connectives_desc}
-   - Rhetorical devices: {rhetoric_desc}
-   - Sentence types: {sentence_types_desc}
+            # 获取逻辑流向
+            logical_flow = content.get('logical_flow', 'sequential')
+            if not isinstance(logical_flow, str):
+                logical_flow = 'sequential'
 
-2. Content Structure:
-   - Core concepts: {', '.join(core_concepts) if core_concepts else 'general concepts'}
-   - Argument direction: {arg_direction}
-   - Logical flow: {logical_flow}
+            prompt = f"""
+Generate a coherent paragraph about {topic} in the context of {context}.
 
-Context: {context}
-Topic: {topic}
+Structure Requirements:
+- Use approximately {sentence_count} sentences
+- Include sentence types: {', '.join(sentence_types)}
+- Use connective words like: {', '.join(connectives[:3])}
+- Follow {logical_flow} logical flow
+- Maintain {argument_direction} argument direction
 
-Requirements:
-- Maintain the above structural features
-- Replace specific concepts with topic-related content
-- Ensure the paragraph is coherent and well-organized
+Content Requirements:
+- Focus on these core concepts: {', '.join(core_concepts[:3])}
+- Ensure the paragraph flows naturally
+- Use academic writing style
+- Make the content relevant to the given context
+
+Please generate a well-structured paragraph that follows these requirements.
 """
-            return structure_desc
+            return prompt
 
         except Exception as e:
             print(f"创建基础prompt时出错: {e}")
-            # 返回简化版本的prompt
-            return f"""
+            return self._create_fallback_prompt(context, topic)
+
+    def _create_fallback_prompt(self, context: str, topic: str) -> str:
+        """创建备用的简单prompt"""
+        return f"""
 Generate a coherent paragraph about {topic} in the context of {context}.
+
 Requirements:
-- Use clear and logical structure
-- Include relevant examples and explanations
-- Maintain academic writing style
+- Write 3-5 sentences
+- Use academic writing style
+- Ensure logical flow
+- Make content relevant to the context
 """
 
     def _enhance_prompt_for_high_weight(self, base_prompt: str, template: Dict) -> str:
@@ -148,14 +150,18 @@ Requirements:
             unique_features = []
             rhetoric = discourse.get('rhetoric', {})
 
-            if rhetoric.get('simile', 0) > 0:
-                unique_features.append("simile rhetorical device")
-            if rhetoric.get('parallelism', 0) > 0:
-                unique_features.append("parallel sentence structure")
-            if rhetoric.get('metaphor', 0) > 0:
-                unique_features.append("metaphorical expressions")
+            if isinstance(rhetoric, dict):
+                if rhetoric.get('simile', 0) > 0:
+                    unique_features.append("simile rhetorical device")
+                if rhetoric.get('parallelism', 0) > 0:
+                    unique_features.append("parallel sentence structure")
+                if rhetoric.get('metaphor', 0) > 0:
+                    unique_features.append("metaphorical expressions")
 
             logical_flow = content.get('logical_flow', 'sequential')
+            if not isinstance(logical_flow, str):
+                logical_flow = 'sequential'
+
             features_desc = ', '.join(unique_features) if unique_features else 'clear structure and flow'
 
             # 添加高权重指令
@@ -179,4 +185,6 @@ Special Instructions (High Priority Template):
 - Provide stronger arguments and evidence
 - Maintain academic writing standards
 """
+
+
 
