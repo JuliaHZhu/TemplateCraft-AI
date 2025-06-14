@@ -2,14 +2,14 @@ import requests
 import json
 import re
 from typing import List, Dict, Any
-from config import ARK_API_KEY, BASE_URL, MODEL_ID
+from config import OPENAI_API_KEY, BASE_URL, MODEL_ID
 
 
-class VolcengineAPIClient:
-    """使用原生HTTP请求调用火山引擎API，保持与官方SDK一致的参数命名"""
+class OpenAIClient:
+    """使用原生HTTP请求调用OpenAI API"""
 
     def __init__(self):
-        self.api_key = ARK_API_KEY
+        self.api_key = OPENAI_API_KEY
         self.base_url = BASE_URL
         self.model_id = MODEL_ID
         self.api_endpoint = f"{self.base_url}/chat/completions"
@@ -18,11 +18,11 @@ class VolcengineAPIClient:
         """分析模板结构"""
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"  # 与官方示例保持一致的认证方式
+            "Authorization": f"Bearer {self.api_key}"
         }
 
         payload = {
-            "model": self.model_id,  # 与官方示例保持一致的模型参数名
+            "model": self.model_id,
             "messages": [
                 {"role": "system",
                  "content": "你是一个专业的文本分析助手，请按照以下格式分析英文段落：\n```json\n{\n\"discourse_structure\": {...},\n\"content_structure\": {...}\n}\n```"},
@@ -47,11 +47,11 @@ class VolcengineAPIClient:
         """生成仿写段落"""
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}"  # 与官方示例保持一致
+            "Authorization": f"Bearer {self.api_key}"
         }
 
         payload = {
-            "model": self.model_id,  # 与官方示例保持一致
+            "model": self.model_id,
             "messages": [
                 {"role": "system",
                  "content": "你是一个专业的英文段落生成助手，请根据给定的结构和主题生成一个连贯的英文段落。"},
@@ -72,4 +72,31 @@ class VolcengineAPIClient:
                 print(f"响应内容: {e.response.text}")
             return ""
 
-    # 其他方法保持不变...
+    def _parse_api_result(self, result: Dict) -> Dict:
+        """解析OpenAI API返回的结果"""
+        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+        # 尝试从返回内容中提取JSON格式的数据
+        try:
+            # 提取代码块中的JSON内容
+            match = re.search(r'```json\n(.*?)\n```', content, re.DOTALL)
+            if match:
+                json_content = match.group(1)
+                return json.loads(json_content)
+
+            # 如果没有找到代码块，尝试直接解析整个内容
+            return json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            print("无法解析API返回的JSON数据")
+            return {"raw_response": content}
+
+    def batch_process(self, prompts: List[str], process_type: str) -> List[str]:
+        """批量处理多个提示"""
+        results = []
+        method = self.analyze_template if process_type == "analysis" else self.generate_paragraph
+
+        for prompt in prompts:
+            result = method(prompt)
+            results.append(result)
+
+        return results

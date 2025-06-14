@@ -4,7 +4,7 @@ from config import SOURCE_DIR
 from utils import read_text_file, write_json_file, read_json_file, get_case_dirs
 from template_analyzer import EnglishTemplateAnalyzer
 from prompt_generator import PromptGenerator
-from api_client import VolcengineAPIClient
+from api_client import OpenAIClient  # 修改为OpenAI客户端
 from result_processor import ResultProcessor
 
 
@@ -27,7 +27,7 @@ def process_case(case_dir: str) -> None:
     # 初始化组件
     analyzer = EnglishTemplateAnalyzer()
     prompt_gen = PromptGenerator()
-    api_client = VolcengineAPIClient()
+    api_client = OpenAIClient()  # 修改为OpenAI客户端
 
     # 1. 分析模板
     analyzed_templates = []
