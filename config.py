@@ -1,7 +1,7 @@
 import os
 
 # 获取环境变量
-XIAOAI_API_KEY = os.environ.get("XIAOAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 BASE_URL = "https://api.openai.com/v1"
 MODEL_ID = "gpt-4"

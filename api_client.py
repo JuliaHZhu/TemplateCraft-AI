@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 import re
 import json
 
-from config import BASE_URL, XIAOAI_API_KEY, MODEL_ID
+from config import BASE_URL, OPENAI_API_KEY, MODEL_ID
 
 
 class OpenAIClient:
@@ -14,7 +14,7 @@ class OpenAIClient:
 
     def __init__(self):
         self.client = OpenAI(
-            api_key=XIAOAI_API_KEY,
+            api_key=OPENAI_API_KEY,
             base_url=BASE_URL
         )
         self.model_id = MODEL_ID
