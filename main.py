@@ -1,15 +1,16 @@
+# main.py
+
 import os
 from typing import List, Dict, Any
-from openai import OpenAI
-from config import SOURCE_DIR, BASE_URL, ARK_API_KEY
-from utils import read_text_file, write_json_file, read_json_file, get_case_dirs
+from config import SOURCE_DIR
+from utils import read_text_file, write_json_file, get_case_dirs
 from template_analyzer import EnglishTemplateAnalyzer
 from prompt_generator import PromptGenerator
 from result_processor import ResultProcessor
+from api_client import OpenAIClient  # 导入 OpenAIClient
 
 
-
-def process_case(case_dir: str, client: OpenAI) -> None:
+def process_case(case_dir: str, client: OpenAIClient) -> None:
     """处理单个案例"""
     print(f"Processing case: {os.path.basename(case_dir)}")
 
@@ -35,23 +36,17 @@ def process_case(case_dir: str, client: OpenAI) -> None:
 
     for prompt in analysis_prompts:
         try:
-            response = client.chat.completions.create(
-                model="doubao-seed-1-6-250615",
-                messages=[
-                    {"role": "system",
-                     "content": "你是一个专业的文本分析助手，请按照以下格式分析英文段落：\n```json\n{\n\"discourse_structure\": {...},\n\"content_structure\": {...}\n}\n```"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.3,
-                max_tokens=1000
-            )
-            analysis_result = analyzer.parse_response(response)
-            analyzed_templates.append(analysis_result)
+            analysis_result = client.analyze_template(prompt)
+            if 'discourse_structure' in analysis_result and 'content_structure' in analysis_result:
+                analyzed_templates.append(analysis_result)
+            else:
+                print("分析结果缺少必要的结构字段。")
+                analyzed_templates.append({})
         except Exception as e:
             print(f"API调用错误: {e}")
             analyzed_templates.append({})
 
-    # 2. 生成仿写prompt
+    # 2. 生成仿写 prompt
     paraphrase_prompts = prompt_gen.generate_paraphrase_prompts(
         analyzed_templates, context, topic, high_weight_index
     )
@@ -60,17 +55,7 @@ def process_case(case_dir: str, client: OpenAI) -> None:
     generated_paragraphs = []
     for prompt in paraphrase_prompts:
         try:
-            response = client.chat.completions.create(
-                model="doubao-seed-1-6-250615",
-                messages=[
-                    {"role": "system",
-                     "content": "你是一个专业的英文段落生成助手，请根据给定的结构和主题生成一个连贯的英文段落。"},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=300
-            )
-            generated_paragraph = response.choices[0].message.content
+            generated_paragraph = client.generate_paragraph(prompt)
             generated_paragraphs.append(generated_paragraph)
         except Exception as e:
             print(f"API调用错误: {e}")
@@ -92,13 +77,8 @@ def process_case(case_dir: str, client: OpenAI) -> None:
 
 def main() -> None:
     """主函数：处理所有案例"""
-    # 初始化Ark客户端，从环境变量中读取您的API Key
-    client = OpenAI(
-        # 此为默认路径，您可根据业务所在地域进行配置
-        base_url=BASE_URL,
-        # 从环境变量中获取您的 API Key。此为默认方式，您可根据需要进行修改
-        api_key=ARK_API_KEY,
-    )
+    # 初始化 OpenAI 客户端
+    client = OpenAIClient()
 
     case_dirs = get_case_dirs(SOURCE_DIR)
 
@@ -116,3 +96,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
